@@ -296,8 +296,7 @@ programButton.onclick = async () => {
     progressBar.textContent = "0";
     progressBars.push(progressBar);
 
-    row.cells[0].style.display = "initial";
-    row.cells[1].style.display = "none";
+    row.cells[1].style.display = "initial";
 
     fileArray.push({ data: fileObj.data, address: offset });
   }
@@ -309,7 +308,7 @@ programButton.onclick = async () => {
       eraseAll: false,
       compress: true,
       reportProgress: (fileIndex, written, total) => {
-        //progressBars[fileIndex].value = (written / total) * 100;
+        progressBars[0].value = (written / total) * 100;
       },
       calculateMD5Hash: (image) => CryptoJS.MD5(CryptoJS.enc.Latin1.parse(image)),
     } as FlashOptions;
@@ -319,7 +318,7 @@ programButton.onclick = async () => {
     term.writeln(`Error: ${e.message}`);
   } finally {
     // Hide progress bars and show erase buttons
-    for (let index = 1; index < table.rows.length; index++) {
+    for (let index = 0; index < table.rows.length; index++) {
       table.rows[index].cells[1].style.display = "none";
     }
   }
