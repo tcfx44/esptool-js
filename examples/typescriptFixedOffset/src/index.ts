@@ -254,7 +254,7 @@ programButton.onclick = async () => {
   for (let index = 1; index < table.rows.length; index++) {
     const row = table.rows[index];
 
-    const offset = 0x10000
+    const offset = 0x10000;
 
     const fileObj = row.cells[0].childNodes[0] as ChildNode & { data: string };
     const progressBar = row.cells[1].childNodes[0];
