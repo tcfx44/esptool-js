@@ -235,6 +235,33 @@ function validateProgramInputs() {
   return "success";
 }
 
+async function getFileData(fileUrl) {
+  const response = await fetch(fileUrl);
+  const data = await response.blob();
+  const metadata = {
+    type: "application/octet-stream",
+  };
+  const file = new File([data], "file.bin", metadata);
+
+  const readFileData = (file: Blob) => {
+    const reader = new FileReader();
+    return new Promise((resolve, reject) => {
+      reader.onerror = () => {
+        reader.abort();
+        reject(new DOMException("Problem parsing input file."));
+      };
+
+      reader.onload = (ev: ProgressEvent<FileReader>) => {
+        resolve(ev.target.result);
+      };
+
+      reader.readAsBinaryString(file);
+    });
+  };
+
+  return await readFileData(file);
+}
+
 programButton.onclick = async () => {
   const alertMsg = document.getElementById("alertmsg");
   const err = validateProgramInputs();
@@ -250,6 +277,13 @@ programButton.onclick = async () => {
 
   const fileArray = [];
   const progressBars = [];
+
+  //bootloader, partitions, etc:
+  {
+    fileArray.push({ data: getFileData("./bootloader.bin"), address: 0x1000 });
+    fileArray.push({ data: getFileData("./partitions.bin"), address: 0x8000 });
+    //fileArray.push({ data: getFileData("./boot_app0.bin"), address: 0xe000 });
+  }
 
   for (let index = 0; index < table.rows.length; index++) {
     const row = table.rows[index];
@@ -275,7 +309,7 @@ programButton.onclick = async () => {
       eraseAll: false,
       compress: true,
       reportProgress: (fileIndex, written, total) => {
-        progressBars[fileIndex].value = (written / total) * 100;
+        //progressBars[fileIndex].value = (written / total) * 100;
       },
       calculateMD5Hash: (image) => CryptoJS.MD5(CryptoJS.enc.Latin1.parse(image)),
     } as FlashOptions;
