@@ -90,7 +90,7 @@ connectButton.onclick = async () => {
     chip = await esploader.main_fn();
 
     // Temporarily broken
-    // await esploader.flashId();
+    // await esploader.flash_id();
   } catch (e) {
     console.error(e);
     term.writeln(`Error: ${e.message}`);
@@ -217,7 +217,7 @@ function validateProgramInputs() {
   let fileData = null;
 
   // check for mandatory fields
-  for (let index = 1; index < rowCount; index++) {
+  for (let index = 0; index < rowCount; index++) {
     row = table.rows[index];
 
     offset = 0x10000;
@@ -251,7 +251,7 @@ programButton.onclick = async () => {
   const fileArray = [];
   const progressBars = [];
 
-  for (let index = 1; index < table.rows.length; index++) {
+  for (let index = 0; index < table.rows.length; index++) {
     const row = table.rows[index];
 
     const offset = 0x10000;
@@ -279,7 +279,7 @@ programButton.onclick = async () => {
       },
       calculateMD5Hash: (image) => CryptoJS.MD5(CryptoJS.enc.Latin1.parse(image)),
     } as FlashOptions;
-    await esploader.writeFlash(flashOptions);
+    await esploader.write_flash(flashOptions);
   } catch (e) {
     console.error(e);
     term.writeln(`Error: ${e.message}`);
