@@ -280,9 +280,9 @@ programButton.onclick = async () => {
 
   //bootloader, partitions, etc:
   {
-    fileArray.push({ data: getFileData("./bootloader.bin"), address: 0x1000 });
-    fileArray.push({ data: getFileData("./partitions.bin"), address: 0x8000 });
-    //fileArray.push({ data: getFileData("./boot_app0.bin"), address: 0xe000 });
+    fileArray.push({ data: await getFileData("./bootloader.bin"), address: 0x1000 });
+    fileArray.push({ data: await getFileData("./partitions.bin"), address: 0x8000 });
+    fileArray.push({ data: await getFileData("./boot_app0.bin"), address: 0xe000 });
   }
 
   for (let index = 0; index < table.rows.length; index++) {
