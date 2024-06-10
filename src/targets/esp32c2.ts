@@ -1,15 +1,16 @@
 import { ESPLoader } from "../esploader.js";
-import { ROM } from "./rom.js";
-import ESP32C6_STUB from "./stub_flasher/stub_flasher_32c6.json";
+import { ESP32C3ROM } from "./esp32c3.js";
+import ESP32C2_STUB from "./stub_flasher/stub_flasher_32c2.json";
 
-export class ESP32C6ROM extends ROM {
-  public CHIP_NAME = "ESP32-C6";
-  public IMAGE_CHIP_ID = 13;
-  public EFUSE_BASE = 0x600b0800;
-  public MAC_EFUSE_REG = this.EFUSE_BASE + 0x044;
-  public UART_CLKDIV_REG = 0x3ff40014;
+export class ESP32C2ROM extends ESP32C3ROM {
+  public CHIP_NAME = "ESP32-C2";
+  public IMAGE_CHIP_ID = 12;
+  public EFUSE_BASE = 0x60008800;
+  public MAC_EFUSE_REG = this.EFUSE_BASE + 0x040;
+  public UART_CLKDIV_REG = 0x60000014;
   public UART_CLKDIV_MASK = 0xfffff;
   public UART_DATE_REG_ADDR = 0x6000007c;
+  public XTAL_CLK_DIVIDER = 1;
 
   public FLASH_WRITE_SIZE = 0x400;
   public BOOTLOADER_FLASH_OFFSET = 0;
@@ -30,49 +31,67 @@ export class ESP32C6ROM extends ROM {
   public SPI_MISO_DLEN_OFFS = 0x28;
   public SPI_W0_OFFS = 0x58;
 
-  public TEXT_START = ESP32C6_STUB.text_start;
-  public ENTRY = ESP32C6_STUB.entry;
-  public DATA_START = ESP32C6_STUB.data_start;
-  public ROM_DATA = ESP32C6_STUB.data;
-  public ROM_TEXT = ESP32C6_STUB.text;
+  public TEXT_START = ESP32C2_STUB.text_start;
+  public ENTRY = ESP32C2_STUB.entry;
+  public DATA_START = ESP32C2_STUB.data_start;
+  public ROM_DATA = ESP32C2_STUB.data;
+  public ROM_TEXT = ESP32C2_STUB.text;
 
-  public async getPkgVersion(loader: ESPLoader) {
-    const numWord = 3;
-    const block1Addr = this.EFUSE_BASE + 0x044;
+  public async getPkgVersion(loader: ESPLoader): Promise<number> {
+    const numWord = 1;
+    const block1Addr = this.EFUSE_BASE + 0x040;
     const addr = block1Addr + 4 * numWord;
     const word3 = await loader.readReg(addr);
-    const pkgVersion = (word3 >> 21) & 0x07;
+    const pkgVersion = (word3 >> 22) & 0x07;
     return pkgVersion;
   }
 
-  public async getChipRevision(loader: ESPLoader) {
-    const block1Addr = this.EFUSE_BASE + 0x044;
-    const numWord = 3;
-    const pos = 18;
+  public async getChipRevision(loader: ESPLoader): Promise<number> {
+    const block1Addr = this.EFUSE_BASE + 0x040;
+    const numWord = 1;
+    const pos = 20;
     const addr = block1Addr + 4 * numWord;
-    const ret = ((await loader.readReg(addr)) & (0x7 << pos)) >> pos;
+    const ret = ((await loader.readReg(addr)) & (0x03 << pos)) >> pos;
     return ret;
   }
 
   public async getChipDescription(loader: ESPLoader) {
     let desc: string;
     const pkgVer = await this.getPkgVersion(loader);
-    if (pkgVer === 0) {
-      desc = "ESP32-C6";
+    if (pkgVer === 0 || pkgVer === 1) {
+      desc = "ESP32-C2";
     } else {
-      desc = "unknown ESP32-C6";
+      desc = "unknown ESP32-C2";
     }
-    const chipRev = await this.getChipRevision(loader);
-    desc += " (revision " + chipRev + ")";
+    const chip_rev = await this.getChipRevision(loader);
+    desc += " (revision " + chip_rev + ")";
     return desc;
   }
 
   public async getChipFeatures(loader: ESPLoader) {
-    return ["Wi-Fi"];
+    return ["Wi-Fi", "BLE"];
   }
 
   public async getCrystalFreq(loader: ESPLoader) {
-    return 40;
+    const uartDiv = (await loader.readReg(this.UART_CLKDIV_REG)) & this.UART_CLKDIV_MASK;
+    const etsXtal = (loader.transport.baudrate * uartDiv) / 1000000 / this.XTAL_CLK_DIVIDER;
+    let normXtal;
+    if (etsXtal > 33) {
+      normXtal = 40;
+    } else {
+      normXtal = 26;
+    }
+    if (Math.abs(normXtal - etsXtal) > 1) {
+      loader.info("WARNING: Unsupported crystal in use");
+    }
+    return normXtal;
+  }
+
+  public async changeBaudRate(loader: ESPLoader) {
+    const rom_with_26M_XTAL = await this.getCrystalFreq(loader);
+    if (rom_with_26M_XTAL === 26) {
+      loader.changeBaud();
+    }
   }
 
   public _d2h(d: number) {

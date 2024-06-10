@@ -60,14 +60,19 @@ class Transport {
   public slipReaderEnabled = false;
   public leftOver = new Uint8Array(0);
   public baudrate = 0;
+  private traceLog = "";
+  private lastTraceTime = Date.now();
+  private reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
-  constructor(public device: SerialPort) {}
+  constructor(public device: SerialPort, public tracing = false, enableSlipReader = true) {
+    this.slipReaderEnabled = enableSlipReader;
+  }
 
   /**
    * Request the serial device vendor ID and Product ID as string.
    * @returns {string} Return the device VendorID and ProductID from SerialPortInfo as formatted string.
    */
-  getInfo() {
+  getInfo(): string {
     const info = this.device.getInfo();
     return info.usbVendorId && info.usbProductId
       ? `WebSerial VendorID 0x${info.usbVendorId.toString(16)} ProductID 0x${info.usbProductId.toString(16)}`
@@ -76,10 +81,59 @@ class Transport {
 
   /**
    * Request the serial device product id from SerialPortInfo.
-   * @returns {string} Return the product ID.
+   * @returns {number | undefined} Return the product ID.
    */
-  getPid() {
+  getPid(): number | undefined {
     return this.device.getInfo().usbProductId;
+  }
+
+  /**
+   * Format received or sent data for tracing output.
+   * @param {string} message Message to format as trace line.
+   */
+  trace(message: string) {
+    const delta = Date.now() - this.lastTraceTime;
+    const prefix = `TRACE ${delta.toFixed(3)}`;
+    const traceMessage = `${prefix} ${message}`;
+    console.log(traceMessage);
+    this.traceLog += traceMessage + "\n";
+  }
+
+  async returnTrace() {
+    try {
+      await navigator.clipboard.writeText(this.traceLog);
+      console.log("Text copied to clipboard!");
+    } catch (err) {
+      console.error("Failed to copy text:", err);
+    }
+  }
+
+  hexify(s: Uint8Array) {
+    return Array.from(s)
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("")
+      .padEnd(16, " ");
+  }
+
+  hexConvert(uint8Array: Uint8Array, autoSplit = true) {
+    if (autoSplit && uint8Array.length > 16) {
+      let result = "";
+      let s = uint8Array;
+
+      while (s.length > 0) {
+        const line = s.slice(0, 16);
+        const asciiLine = String.fromCharCode(...line)
+          .split("")
+          .map((c) => (c === " " || (c >= " " && c <= "~" && c !== "  ") ? c : "."))
+          .join("");
+        s = s.slice(16);
+        result += `\n    ${this.hexify(line.slice(0, 8))} ${this.hexify(line.slice(8))} | ${asciiLine}`;
+      }
+
+      return result;
+    } else {
+      return this.hexify(uint8Array);
+    }
   }
 
   /**
@@ -88,34 +142,19 @@ class Transport {
    * @returns {Uint8Array} Formatted unsigned 8 bit data array.
    */
   slipWriter(data: Uint8Array) {
-    let countEsc = 0;
-    let i = 0,
-      j = 0;
-
-    for (i = 0; i < data.length; i++) {
-      if (data[i] === 0xc0 || data[i] === 0xdb) {
-        countEsc++;
-      }
-    }
-    const outData = new Uint8Array(2 + countEsc + data.length);
-    outData[0] = 0xc0;
-    j = 1;
-    for (i = 0; i < data.length; i++, j++) {
-      if (data[i] === 0xc0) {
-        outData[j++] = 0xdb;
-        outData[j] = 0xdc;
-        continue;
-      }
+    const outData = [];
+    outData.push(0xc0);
+    for (let i = 0; i < data.length; i++) {
       if (data[i] === 0xdb) {
-        outData[j++] = 0xdb;
-        outData[j] = 0xdd;
-        continue;
+        outData.push(0xdb, 0xdd);
+      } else if (data[i] === 0xc0) {
+        outData.push(0xdb, 0xdc);
+      } else {
+        outData.push(data[i]);
       }
-
-      outData[j] = data[i];
     }
-    outData[j] = 0xc0;
-    return outData;
+    outData.push(0xc0);
+    return new Uint8Array(outData);
   }
 
   /**
@@ -127,6 +166,10 @@ class Transport {
 
     if (this.device.writable) {
       const writer = this.device.writable.getWriter();
+      if (this.tracing) {
+        console.log("Write bytes");
+        this.trace(`Write ${outData.length} bytes: ${this.hexConvert(outData)}`);
+      }
       await writer.write(outData);
       writer.releaseLock();
     }
@@ -217,15 +260,17 @@ class Transport {
       return this.leftOver;
     }
 
-    const reader = this.device.readable.getReader();
+    this.reader = this.device.readable.getReader();
     try {
       if (timeout > 0) {
-        t = setTimeout(function () {
-          reader.cancel();
+        t = setTimeout(() => {
+          if (this.reader) {
+            this.reader.cancel();
+          }
         }, timeout);
       }
       do {
-        const { value, done } = await reader.read();
+        const { value, done } = await this.reader.read();
         if (done) {
           this.leftOver = packet;
           throw new Error("Timeout");
@@ -237,10 +282,21 @@ class Transport {
       if (timeout > 0) {
         clearTimeout(t);
       }
-      reader.releaseLock();
+      this.reader.releaseLock();
     }
+
+    if (this.tracing) {
+      console.log("Read bytes");
+      this.trace(`Read ${packet.length} bytes: ${this.hexConvert(packet)}`);
+    }
+
     if (this.slipReaderEnabled) {
-      return this.slipReader(packet);
+      const slipReaderResult = this.slipReader(packet);
+      if (this.tracing) {
+        console.log("Slip reader results");
+        this.trace(`Read ${slipReaderResult.length} bytes: ${this.hexConvert(slipReaderResult)}`);
+      }
+      return slipReaderResult;
     }
     return packet;
   }
@@ -259,24 +315,30 @@ class Transport {
     if (!this.device.readable) {
       return this.leftOver;
     }
-    const reader = this.device.readable.getReader();
+    this.reader = this.device.readable.getReader();
     let t;
     try {
       if (timeout > 0) {
-        t = setTimeout(function () {
-          reader.cancel();
+        t = setTimeout(() => {
+          if (this.reader) {
+            this.reader.cancel();
+          }
         }, timeout);
       }
-      const { value, done } = await reader.read();
+      const { value, done } = await this.reader.read();
       if (done) {
-        throw new Error("Timeout");
+        return value;
+      }
+      if (this.tracing) {
+        console.log("Raw Read bytes");
+        this.trace(`Read ${value.length} bytes: ${this.hexConvert(value)}`);
       }
       return value;
     } finally {
       if (timeout > 0) {
         clearTimeout(t);
       }
-      reader.releaseLock();
+      this.reader.releaseLock();
     }
   }
 
@@ -344,7 +406,11 @@ class Transport {
    * Disconnect from serial device by running SerialPort.close() after streams unlock.
    */
   async disconnect() {
+    if (this.device.readable?.locked) {
+      await this.reader?.cancel();
+    }
     await this.waitForUnlock(400);
+    this.reader = undefined;
     await this.device.close();
   }
 }
