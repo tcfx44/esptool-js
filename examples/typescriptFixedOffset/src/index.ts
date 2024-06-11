@@ -87,7 +87,7 @@ connectButton.onclick = async () => {
     } as LoaderOptions;
     esploader = new ESPLoader(flashOptions);
 
-    chip = await esploader.main_fn();
+    chip = await esploader.main();
 
     // Temporarily broken
     // await esploader.flash_id();
@@ -312,7 +312,7 @@ programButton.onclick = async () => {
       },
       calculateMD5Hash: (image) => CryptoJS.MD5(CryptoJS.enc.Latin1.parse(image)),
     } as FlashOptions;
-    await esploader.write_flash(flashOptions);
+    await esploader.writeFlash(flashOptions);
   } catch (e) {
     console.error(e);
     term.writeln(`Error: ${e.message}`);
