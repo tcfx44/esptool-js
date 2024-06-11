@@ -90,7 +90,7 @@ connectButton.onclick = async () => {
     chip = await esploader.main();
 
     // Temporarily broken
-    // await esploader.flashId();
+    // await esploader.flash_id();
   } catch (e) {
     console.error(e);
     term.writeln(`Error: ${e.message}`);
@@ -217,7 +217,7 @@ function validateProgramInputs() {
   let fileData = null;
 
   // check for mandatory fields
-  for (let index = 1; index < rowCount; index++) {
+  for (let index = 0; index < rowCount; index++) {
     row = table.rows[index];
 
     offset = 0x10000;
@@ -233,6 +233,33 @@ function validateProgramInputs() {
     if (fileData == null) return "No file selected!";
   }
   return "success";
+}
+
+async function getFileData(fileUrl) {
+  const response = await fetch(fileUrl);
+  const data = await response.blob();
+  const metadata = {
+    type: "application/octet-stream",
+  };
+  const file = new File([data], "file.bin", metadata);
+
+  const readFileData = (file: Blob) => {
+    const reader = new FileReader();
+    return new Promise((resolve, reject) => {
+      reader.onerror = () => {
+        reader.abort();
+        reject(new DOMException("Problem parsing input file."));
+      };
+
+      reader.onload = (ev: ProgressEvent<FileReader>) => {
+        resolve(ev.target.result);
+      };
+
+      reader.readAsBinaryString(file);
+    });
+  };
+
+  return await readFileData(file);
 }
 
 programButton.onclick = async () => {
@@ -251,7 +278,14 @@ programButton.onclick = async () => {
   const fileArray = [];
   const progressBars = [];
 
-  for (let index = 1; index < table.rows.length; index++) {
+  //bootloader, partitions, etc:
+  {
+    fileArray.push({ data: await getFileData("./bootloader.bin"), address: 0x1000 });
+    fileArray.push({ data: await getFileData("./partitions.bin"), address: 0x8000 });
+    fileArray.push({ data: await getFileData("./boot_app0.bin"), address: 0xe000 });
+  }
+
+  for (let index = 0; index < table.rows.length; index++) {
     const row = table.rows[index];
 
     const offset = 0x10000;
@@ -262,8 +296,7 @@ programButton.onclick = async () => {
     progressBar.textContent = "0";
     progressBars.push(progressBar);
 
-    row.cells[0].style.display = "initial";
-    row.cells[1].style.display = "none";
+    row.cells[1].style.display = "initial";
 
     fileArray.push({ data: fileObj.data, address: offset });
   }
@@ -275,7 +308,7 @@ programButton.onclick = async () => {
       eraseAll: false,
       compress: true,
       reportProgress: (fileIndex, written, total) => {
-        progressBars[fileIndex].value = (written / total) * 100;
+        progressBars[0].value = (written / total) * 100;
       },
       calculateMD5Hash: (image) => CryptoJS.MD5(CryptoJS.enc.Latin1.parse(image)),
     } as FlashOptions;
@@ -285,7 +318,7 @@ programButton.onclick = async () => {
     term.writeln(`Error: ${e.message}`);
   } finally {
     // Hide progress bars and show erase buttons
-    for (let index = 1; index < table.rows.length; index++) {
+    for (let index = 0; index < table.rows.length; index++) {
       table.rows[index].cells[1].style.display = "none";
     }
   }
