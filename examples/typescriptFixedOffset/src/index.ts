@@ -279,16 +279,18 @@ programButton.onclick = async () => {
   const progressBars = [];
 
   //bootloader, partitions, etc:
+  // no need to flash these every time
   {
-    fileArray.push({ data: await getFileData("./bootloader.bin"), address: 0x1000 });
-    fileArray.push({ data: await getFileData("./partitions.bin"), address: 0x8000 });
-    fileArray.push({ data: await getFileData("./boot_app0.bin"), address: 0xe000 });
+    //fileArray.push({ data: await getFileData("./bootloader.bin"), address: 0x1000 });
+    //fileArray.push({ data: await getFileData("./partitions.bin"), address: 0x8000 });
+    //fileArray.push({ data: await getFileData("./boot_app0.bin"), address: 0xe000 });
   }
 
   for (let index = 0; index < table.rows.length; index++) {
     const row = table.rows[index];
 
-    const offset = 0x10000;
+    // address of the default firmware app
+    let offset = 0x10000;
 
     const fileObj = row.cells[0].childNodes[0] as ChildNode & { data: string };
     const progressBar = row.cells[1].childNodes[0];
@@ -297,6 +299,11 @@ programButton.onclick = async () => {
     progressBars.push(progressBar);
 
     row.cells[1].style.display = "initial";
+
+    if (fileObj.value.endsWith("littlefs.bin")) {
+      // this is filesystem image - change the address
+      offset = 0xc90000;
+    }
 
     fileArray.push({ data: fileObj.data, address: offset });
   }
