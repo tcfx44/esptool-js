@@ -15,6 +15,7 @@ const lblConsoleFor = document.getElementById("lblConsoleFor");
 const lblConnTo = document.getElementById("lblConnTo");
 const table = document.getElementById("fileTable") as HTMLTableElement;
 const alertDiv = document.getElementById("alertDiv");
+const flashBootloader = document.getElementById("flashBootloader") as HTMLInputElement;
 
 // This is a frontend example of Esptool-JS using local bundle file
 // To optimize use a CDN hosted version like
@@ -119,7 +120,9 @@ resetButton.onclick = async () => {
   await transport.setDTR(true);
 };
 
-
+/**
+ * Adds a row to the table of files to be flashed
+ */
 function addFile() {
   const rowCount = table.rows.length;
   const row = table.insertRow(rowCount);
@@ -279,11 +282,10 @@ programButton.onclick = async () => {
   const progressBars = [];
 
   //bootloader, partitions, etc:
-  // no need to flash these every time
-  {
-    //fileArray.push({ data: await getFileData("./bootloader.bin"), address: 0x1000 });
-    //fileArray.push({ data: await getFileData("./partitions.bin"), address: 0x8000 });
-    //fileArray.push({ data: await getFileData("./boot_app0.bin"), address: 0xe000 });
+  if (flashBootloader.checked) {
+    fileArray.push({ data: await getFileData("./bootloader.bin"), address: 0x1000 });
+    fileArray.push({ data: await getFileData("./partitions.bin"), address: 0x8000 });
+    fileArray.push({ data: await getFileData("./boot_app0.bin"), address: 0xe000 });
   }
 
   for (let index = 0; index < table.rows.length; index++) {
